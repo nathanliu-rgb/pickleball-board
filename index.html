@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>匹克球 AB團體 Google雲端同步賽事看板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background-color: #0A0F1D; }
+        .pickleball-yellow { color: #CCFF00; }
+        .bg-pickleball-yellow { background-color: #CCFF00; }
+        .glass-card { background: rgba(19, 26, 48, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.06); }
+        .active-tab { border-bottom: 4px solid #CCFF00; color: #CCFF00; }
+    </style>
+</head>
+<body class="text-slate-100 min-h-screen pb-12">
+
+    <!-- HEADER -->
+    <header class="relative overflow-hidden border-b border-slate-800 bg-slate-950 py-8 px-4">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+            <div class="flex items-center gap-4">
+                <div class="bg-pickleball-yellow text-slate-950 p-3 rounded-2xl shadow-[0_0_20px_rgba(204,255,0,0.3)]">
+                    <i class="fa-solid fa-table-tennis-paddle-ball text-3xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">匹克球 <span class="pickleball-yellow">Google 試算表即時看板</span></h1>
+                    <p class="text-slate-400 text-xs sm:text-sm mt-1">紅隊 (A1-A6) VS 白隊 (B1-B6) • 12分鐘限時搶分 • 自動雲端同步</p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <div class="glass-card px-4 py-2 rounded-xl text-center border-l-4 border-l-rose-500">
+                    <span class="text-[10px] text-slate-400 block">紅隊 (Team A)</span>
+                    <span class="text-base font-bold text-rose-400" id="header-team-a-status">0勝</span>
+                </div>
+                <div class="glass-card px-4 py-2 rounded-xl text-center border-l-4 border-l-slate-100">
+                    <span class="text-[10px] text-slate-400 block">白隊 (Team B)</span>
+                    <span class="text-base font-bold text-slate-200" id="header-team-b-status">0勝</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- TABS -->
+    <nav class="max-w-7xl mx-auto px-4 mt-6">
+        <div class="flex border-b border-slate-800 overflow-x-auto whitespace-nowrap">
+            <button onclick="switchTab('rules')" id="tab-rules" class="flex-1 py-4 px-4 text-center font-bold text-sm active-tab">
+                <i class="fa-solid fa-book-open mr-2"></i>1. 大會專屬賽制規則
+            </button>
+            <button onclick="switchTab('schedule')" id="tab-schedule" class="flex-1 py-4 px-4 text-center font-bold text-sm text-slate-400">
+                <i class="fa-solid fa-sitemap mr-2"></i>2. 賽程與總積分榜
+            </button>
+            <button onclick="switchTab('live')" id="tab-live" class="flex-1 py-4 px-4 text-center font-bold text-sm text-slate-400">
+                <i class="fa-solid fa-circle-play mr-2"></i>3. 現場計分與計時
+            </button>
+            <button onclick="switchTab('grouping')" id="tab-grouping" class="flex-1 py-4 px-4 text-center font-bold text-sm text-slate-400">
+                <i class="fa-solid fa-users-gear mr-2"></i>4. 後台名單與初始化
+            </button>
+        </div>
+    </nav>
+
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+    <!-- MAIN CONTAINER -->
+    <main class="max-w-7xl mx-auto px-4 mt-8">
+
+        <!-- TAB 1: RULES -->
+        <section id="content-rules" class="space-y-8">
+            <div class="glass-card p-6 sm:p-8 rounded-2xl">
+                <h2 class="text-xl font-black mb-6 flex items-center gap-3 border-b border-slate-800 pb-4">
+                    <i class="fa-solid fa-circle-info pickleball-yellow"></i> 本次大會賽制規則
+                </h2>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-3">
+                        <div class="w-12 h-12 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center text-xl font-bold">01</div>
+                        <h3 class="text-lg font-bold text-rose-400">勝場優先 • 平手比得分</h3>
+                        <p class="text-slate-300 text-xs leading-relaxed">雙方進行對抗賽。先比較「總勝場數」；若勝場平手，則加總 A、B 兩隊所有比賽的「總得分」，高者獲勝！</p>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-3">
+                        <div class="w-12 h-12 rounded-xl bg-pickleball-yellow/10 text-pickleball-yellow flex items-center justify-center text-xl font-bold">02</div>
+                        <h3 class="text-lg font-bold text-pickleball-yellow">12分鐘限制 • 無 Deuce</h3>
+                        <p class="text-slate-300 text-xs leading-relaxed">每場限時 12 分鐘，時間到由高分者獲勝。時間內先搶到 11 分者也直接獲勝。不需領先兩分，平手時多拿一分即勝出。</p>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-3">
+                        <div class="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-xl font-bold">03</div>
+                        <h3 class="text-lg font-bold text-blue-400">數據即時雲端同步</h3>
+                        <p class="text-slate-300 text-xs leading-relaxed">本網頁已連動大會 Google 試算表。現場控制台點擊送出比分後，全場選手只要刷新網頁即可看到最新排行榜。</p>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-center">
+                    <button onclick="fetchFromGoogleSheets()" class="bg-slate-800 hover:bg-slate-700 text-xs text-pickleball-yellow px-4 py-2 rounded-xl border border-slate-700">
+                        <i class="fa-solid fa-rotate mr-1"></i> 手動重新整理雲端資料
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: SCHEDULE -->
+        <section id="content-schedule" class="hidden space-y-8">
+            <div class="glass-card p-6 rounded-3xl text-center space-y-4">
+                <h2 class="text-xl font-bold"><i class="fa-solid fa-shield-halved text-pickleball-yellow"></i> 雲端即時總積分板</h2>
+                <div class="grid grid-cols-2 md:grid-cols-3 items-center gap-4">
+                    <div>
+                        <span class="text-xs text-rose-400 block">紅隊總計</span>
+                        <span class="text-4xl font-black text-rose-400 font-mono" id="total-wins-a">0</span> 勝
+                        <span class="text-xs text-slate-400 block">總得分: <span id="total-points-a">0</span></span>
+                    </div>
+                    <div class="hidden md:block text-xs text-slate-400">勝場平手時將比總得分<br><span class="text-[10px] text-amber-500">（每 15 秒背景自動同步）</span></div>
+                    <div>
+                        <span class="text-xs text-slate-200 block">白隊總計</span>
+                        <span class="text-4xl font-black text-slate-100 font-mono" id="total-wins-b">0</span> 勝
+                        <span class="text-xs text-slate-400 block">總得分: <span id="black-points-b">0</span></span>
+                    </div>
+                </div>
+            </div>
+            <div id="schedule-rounds-container" class="space-y-6">
+                <div class="text-center py-12 text-slate-500 text-sm">正在從 Google 試算表載入賽程...</div>
+            </div>
+        </section>
+
+        <!-- TAB 3: LIVE SCOREBOARD -->
+        <section id="content-live" class="hidden space-y-8">
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <!-- COURT 1 -->
+                <div class="glass-card rounded-3xl p-6 border-t-4 border-t-rose-500">
+                    <div class="text-xs font-bold text-rose-500 mb-2">COURT 1 (場地一)</div>
+                    <select id="court-selector-0" onchange="onCourtMatchSelect(0)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 mb-4"></select>
+                    <div id="court-body-0" class="text-center py-4 text-slate-500 text-xs">請選擇賽事</div>
+                </div>
+                <!-- COURT 2 -->
+                <div class="glass-card rounded-3xl p-6 border-t-4 border-t-slate-400">
+                    <div class="text-xs font-bold text-slate-400 mb-2">COURT 2 (場地二)</div>
+                    <select id="court-selector-1" onchange="onCourtMatchSelect(1)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 mb-4"></select>
+                    <div id="court-body-1" class="text-center py-4 text-slate-500 text-xs">請選擇賽事</div>
+                </div>
+                <!-- COURT 3 -->
+                <div class="glass-card rounded-3xl p-6 border-t-4 border-t-emerald-500">
+                    <div class="text-xs font-bold text-emerald-400 mb-2">COURT 3 (場地三)</div>
+                    <select id="court-selector-2" onchange="onCourtMatchSelect(2)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 mb-4"></select>
+                    <div id="court-body-2" class="text-center py-4 text-slate-500 text-xs">請選擇賽事</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 4: ADMIN GROUPING & MANIPULATION -->
+        <section id="content-grouping" class="hidden space-y-8">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Left Input Panel -->
+                <div class="glass-card p-6 rounded-2xl space-y-4 h-fit">
+                    <h3 class="text-lg font-bold flex items-center gap-2 text-yellow-400">
+                        <i class="fa-solid fa-lock"></i> 賽前名單與初始化
+                    </h3>
+                    <p class="text-xs text-slate-400">請在下方登錄 24 位好手（每行一人），隨後進行隨機分牌。完成分組後，點擊「同步到雲端試算表」即可重設雲端所有名單與賽程！</p>
+                    <textarea id="player-input" rows="8" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 font-mono focus:outline-none focus:border-pickleball-yellow">Yili
+Argon
+Sandy
+Danica
+Josh
+Alicia
+Sean
+Jack
+Rossi
+政憲
+Jamie
+Emma
+Rachel
+Wilson
+Michael
+Ann
+Wilbur
+Oscar
+Martin
+Joanne
+Nathan
+Mickey
+Mandy
+Winni</textarea>
+                    
+                    <button onclick="generateRandomGroups()" class="w-full bg-pickleball-yellow hover:bg-lime-400 text-slate-950 font-bold py-3 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-xs">
+                        <i class="fa-solid fa-shuffle"></i> 進行隨機洗牌組隊
+                    </button>
+
+                    <div class="border-t border-slate-800 pt-4 space-y-3">
+                        <span class="text-xs font-bold text-slate-400 block">
+                            <i class="fa-solid fa-cloud-arrow-up text-pickleball-yellow mr-1"></i>備份與雲端同步
+                        </span>
+                        <button onclick="uploadTeamsAndScheduleToCloud()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 text-xs">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> 同步到雲端試算表 (重設)
+                        </button>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="exportGroupsJSON()" class="bg-slate-800 hover:bg-slate-750 text-slate-200 py-2 rounded-lg text-xs border border-slate-700">
+                                <i class="fa-solid fa-file-export mr-1"></i> 匯出 JSON
+                            </button>
+                            <input type="file" id="json-file-input" accept=".json" onchange="importGroupsJSON(event)" class="hidden" />
+                            <button onclick="document.getElementById('json-file-input').click()" class="bg-slate-800 hover:bg-slate-750 text-slate-200 py-2 rounded-lg text-xs border border-slate-700">
+                                <i class="fa-solid fa-file-import mr-1"></i> 匯入 JSON
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Live Group Cards -->
+                <div class="lg:col-span-2 space-y-6">
+                    <h3 class="text-md font-bold text-slate-200 flex items-center gap-2">
+                        <i class="fa-solid fa-arrows-spin text-pickleball-yellow"></i>
+                        拖曳調整隊友面板 (更動後請點選「同步到雲端」保存)
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- RED TEAM -->
+                        <div class="space-y-4">
+                            <h4 class="text-xs font-bold text-rose-400 border-b border-rose-500/20 pb-2"><i class="fa-solid fa-square text-rose-500 mr-1.5"></i> 紅隊 (A1-A6)</h4>
+                            <div id="red-groups-container" class="space-y-3"></div>
+                        </div>
+                        <!-- WHITE TEAM -->
+                        <div class="space-y-4">
+                            <h4 class="text-xs font-bold text-slate-200 border-b border-slate-700 pb-2"><i class="fa-solid fa-square text-slate-300 mr-1.5"></i> 白隊 (B1-B6)</h4>
+                            <div id="white-groups-container" class="space-y-3"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // ==========================================
+        // 已自動綁定您部署的 Google Apps Script 網址
+        // ==========================================
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwE9SEaIA_ZAyATw1sSzNc1ILXpOU7l0uRiYt_ckKHumWdsZ6zGt2AN-jEkIK24FGjf/exec";
+
+        let teams = [];
+        let matches = [];
+        let courtActiveMatch = [null, null, null];
+        let courtTimers = [
+            { seconds: 720, running: false, intervalId: null },
+            { seconds: 720, running: false, intervalId: null },
+            { seconds: 720, running: false, intervalId: null }
+        ];
+
+        window.onload = function() {
+            fetchFromGoogleSheets();
+            // 每隔 15 秒在背景自動抓取一次最新比分，維持現場同步
+            setInterval(fetchFromGoogleSheets, 15000);
+        };
+
+        // 從 Google Sheets 獲取數據
+        function fetchFromGoogleSheets() {
+            fetch(GOOGLE_SCRIPT_URL)
+            .then(response => response.json())
+            .then(data => {
+                if (data.teams && data.teams.length > 1) {
+                    teams = data.teams.slice(1).map(row => ({
+                        id: parseInt(row[0]),
+                        group: row[1],
+                        num: parseInt(row[2]),
+                        name: row[3],
+                        players: [row[4], row[5]]
+                    }));
+                }
+
+                if (data.matches && data.matches.length > 1) {
+                    matches = data.matches.slice(1).map(row => ({
+                        id: parseInt(row[0]),
+                        round: parseInt(row[1]),
+                        court: parseInt(row[2]),
+                        t1: parseInt(row[3]),
+                        t2: parseInt(row[4]),
+                        score1: row[5] === "" || row[5] === null ? null : parseInt(row[5]),
+                        score2: row[6] === "" || row[6] === null ? null : parseInt(row[6]),
+                        played: row[7] === "true" || row[7] === true,
+                        label: row[8],
+                        referee: row[9]
+                    }));
+                }
+
+                renderScheduleList();
+                updateScoresAndLeaderboard();
+                populateCourtSelectors();
+                renderGroupCards();
+                
+                for(let i=0; i<3; i++) {
+                    if (courtActiveMatch[i] !== null) {
+                        const m = matches.find(x => x.id === courtActiveMatch[i]);
+                        renderCourtActiveBoard(i, m.score1, m.score2);
+                    }
+                }
+            })
+            .catch(err => console.error("讀取 Google 試算表失敗: ", err));
+        }
+
+        function switchTab(tabId) {
+            ['rules', 'schedule', 'live', 'grouping'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.remove('active-tab');
+                document.getElementById(`tab-${t}`).classList.add('text-slate-400');
+                document.getElementById(`content-${t}`).classList.add('hidden');
+            });
+            document.getElementById(`tab-${tabId}`).classList.add('active-tab');
+            document.getElementById(`content-${tabId}`).classList.remove('hidden');
+        }
+
+        // 重新組裝不衝突對抗賽程
+        function generateRandomGroups() {
+            const text = document.getElementById('player-input').value.trim();
+            const names = text.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+            if (names.length !== 24) {
+                alert("人數必須剛好為 24 人！");
+                return;
+            }
+
+            // Shuffle
+            for (let i = names.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [names[i], names[j]] = [names[j], names[i]];
+            }
+
+            teams = [];
+            for (let i = 0; i < 6; i++) {
+                teams.push({ id: i, group: 'A', num: i+1, name: `A${i+1} 組合 (${names[i*2]}/${names[i*2+1]})`, players: [names[i*2], names[i*2+1]] });
+            }
+            for (let i = 0; i < 6; i++) {
+                teams.push({ id: i+6, group: 'B', num: i+1, name: `B${i+1} 組合 (${names[12+i*2]}/${names[12+i*2+1]})`, players: [names[12+i*2], names[12+i*2+1]] });
+            }
+
+            matches = [
+                { id: 1, round: 1, court: 0, t1: 0, t2: 6, score1: null, score2: null, played: false, label: "A1 vs B1", referee: "A4, A5, A6" },
+                { id: 2, round: 1, court: 1, t1: 1, t2: 7, score1: null, score2: null, played: false, label: "A2 vs B2", referee: "A4, A5, A6" },
+                { id: 3, round: 1, court: 2, t1: 2, t2: 8, score1: null, score2: null, played: false, label: "A3 vs B3", referee: "A4, A5, A6" },
+                { id: 4, round: 2, court: 0, t1: 3, t2: 9, score1: null, score2: null, played: false, label: "A4 vs B4", referee: "A1, A2, A3" },
+                { id: 5, round: 2, court: 1, t1: 4, t2: 10, score1: null, score2: null, played: false, label: "A5 vs B5", referee: "A1, A2, A3" },
+                { id: 6, round: 2, court: 2, t1: 5, t2: 11, score1: null, score2: null, played: false, label: "A6 vs B6", referee: "A1, A2, A3" },
+                { id: 7, round: 3, court: 0, t1: 0, t2: 9, score1: null, score2: null, played: false, label: "A1 vs B4", referee: "A4, A5, A6" },
+                { id: 8, round: 3, court: 1, t1: 1, t2: 10, score1: null, score2: null, played: false, label: "A2 vs B5", referee: "A4, A5, A6" },
+                { id: 9, round: 3, court: 2, t1: 2, t2: 11, score1: null, score2: null, played: false, label: "A3 vs B6", referee: "A4, A5, A6" },
+                { id: 10, round: 4, court: 0, t1: 3, t2: 6, score1: null, score2: null, played: false, label: "A4 vs B1", referee: "A1, A2, A3" },
+                { id: 11, round: 4, court: 1, t1: 4, t2: 7, score1: null, score2: null, played: false, label: "A5 vs B2", referee: "A1, A2, A3" },
+                { id: 12, round: 4, court: 2, t1: 5, t2: 8, score1: null, score2: null, played: false, label: "A6 vs B3", referee: "A1, A2, A3" }
+            ];
+
+            renderGroupCards();
+            showToast("本地隨機分組完成！點擊下方「同步到雲端」將其生效。", "info");
+        }
+
+        // 推送完整分組與賽程初始化到 Google Sheet
+        function uploadTeamsAndScheduleToCloud() {
+            if(teams.length === 0 || matches.length === 0) {
+                alert("目前無可供同步的資料，請先點選洗牌組隊！");
+                return;
+            }
+
+            const teamsSheetData = [["Id", "Group", "Num", "Name", "Player1", "Player2"]];
+            teams.forEach(t => {
+                teamsSheetData.push([t.id, t.group, t.num, t.name, t.players[0], t.players[1]]);
+            });
+
+            const matchesSheetData = [["Id", "Round", "Court", "Team1_Id", "Team2_Id", "Score1", "Score2", "Played", "Label", "Referee"]];
+            matches.forEach(m => {
+                matchesSheetData.push([m.id, m.round, m.court, m.t1, m.t2, m.score1, m.score2, m.played, m.label, m.referee]);
+            });
+
+            showToast("正在建立並同步到試算表分頁...");
+
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "init",
+                    teams: teamsSheetData,
+                    matches: matchesSheetData
+                })
+            })
+            .then(() => {
+                showToast("雲端初始化與覆蓋儲存成功！", "success");
+                setTimeout(fetchFromGoogleSheets, 1500);
+            })
+            .catch(err => {
+                console.error(err);
+                alert("同步失敗，請檢查網路連線。");
+            });
+        }
+
+        // HTML5 Drag & Drop 戰術板
+        function handleDragStart(event, teamId, playerIdx) {
+            event.dataTransfer.setData("text/plain", JSON.stringify({ teamId, playerIdx }));
+            event.dataTransfer.effectAllowed = "move";
+            event.currentTarget.classList.add("opacity-40");
+        }
+
+        function handleDragEnd(event) {
+            event.currentTarget.classList.remove("opacity-40");
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add("border-pickleball-yellow", "bg-slate-800", "scale-[1.02]");
+        }
+
+        function handleDragLeave(event) {
+            event.currentTarget.classList.remove("border-pickleball-yellow", "bg-slate-800", "scale-[1.02]");
+        }
+
+        function handleDrop(event, targetTeamId, targetPlayerIdx) {
+            event.preventDefault();
+            event.currentTarget.classList.remove("border-pickleball-yellow", "bg-slate-800", "scale-[1.02]");
+
+            try {
+                const data = JSON.parse(event.dataTransfer.getData("text/plain"));
+                const sourceTeamId = data.teamId;
+                const sourcePlayerIdx = data.playerIdx;
+
+                if (sourceTeamId === targetTeamId && sourcePlayerIdx === targetPlayerIdx) return;
+
+                const sourceTeam = teams.find(t => t.id === sourceTeamId);
+                const targetTeam = teams.find(t => t.id === targetTeamId);
+
+                // Swap players
+                const temp = sourceTeam.players[sourcePlayerIdx];
+                sourceTeam.players[sourcePlayerIdx] = targetTeam.players[targetPlayerIdx];
+                targetTeam.players[targetPlayerIdx] = temp;
+
+                // Update default group string labels
+                sourceTeam.name = `${sourceTeam.group}${sourceTeam.num} 組合 (${sourceTeam.players[0]}/${sourceTeam.players[1]})`;
+                targetTeam.name = `${targetTeam.group}${targetTeam.num} 組合 (${targetTeam.players[0]}/${targetTeam.players[1]})`;
+
+                renderGroupCards();
+                showToast("調整成功！請記得點選『同步到雲端試算表』予以保存更新！", "info");
+            } catch (e) {
+                console.error("Drop swap failed: ", e);
+            }
+        }
+
+        function renderGroupCards() {
+            const rContainer = document.getElementById('red-groups-container');
+            const wContainer = document.getElementById('white-groups-container');
+            if(!rContainer || !wContainer) return;
+
+            rContainer.innerHTML = '';
+            wContainer.innerHTML = '';
+
+            teams.forEach(team => {
+                const isA = team.group === 'A';
+                const el = document.createElement('div');
+                el.className = `glass-card p-3 rounded-xl border-l-4 ${isA ? 'border-rose-500' : 'border-slate-300'}`;
+                el.innerHTML = `
+                    <div class="text-xs font-bold text-slate-300 mb-2">${team.name}</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div draggable="true" 
+                             ondragstart="handleDragStart(event, ${team.id}, 0)" 
+                             ondragend="handleDragEnd(event)"
+                             ondragover="handleDragOver(event)" 
+                             ondragleave="handleDragLeave(event)" 
+                             ondrop="handleDrop(event, ${team.id}, 0)"
+                             class="flex items-center gap-1 bg-slate-950/60 p-2 rounded text-xs cursor-grab active:cursor-grabbing truncate">
+                            <i class="fa-solid fa-grip-vertical text-slate-600 text-[10px]"></i>
+                            <span class="truncate">${team.players[0] || '空'}</span>
+                        </div>
+                        <div draggable="true" 
+                             ondragstart="handleDragStart(event, ${team.id}, 1)" 
+                             ondragend="handleDragEnd(event)"
+                             ondragover="handleDragOver(event)" 
+                             ondragleave="handleDragLeave(event)" 
+                             ondrop="handleDrop(event, ${team.id}, 1)"
+                             class="flex items-center gap-1 bg-slate-950/60 p-2 rounded text-xs cursor-grab active:cursor-grabbing truncate">
+                            <i class="fa-solid fa-grip-vertical text-slate-600 text-[10px]"></i>
+                            <span class="truncate">${team.players[1] || '空'}</span>
+                        </div>
+                    </div>
+                `;
+                if(isA) rContainer.appendChild(el);
+                else wContainer.appendChild(el);
+            });
+        }
+
+        // Render Schedule List
+        function renderScheduleList() {
+            const container = document.getElementById('schedule-rounds-container');
+            if(!container || matches.length === 0) return;
+            container.innerHTML = '';
+
+            const totalRounds = Math.max(...matches.map(m => m.round));
+            for (let r = 1; r <= totalRounds; r++) {
+                const roundMatches = matches.filter(x => x.round === r);
+                if(roundMatches.length === 0) continue;
+                
+                const rCard = document.createElement('div');
+                rCard.className = 'glass-card p-4 rounded-xl space-y-2';
+                
+                let html = `<div class="text-xs font-bold text-pickleball-yellow pb-2 border-b border-slate-800 flex justify-between items-center">
+                    <span>第 ${r} 輪對抗賽 (Round ${r})</span>
+                    <span class="text-[10px] text-slate-400">當輪裁判預備隊: <strong class="text-amber-400">${roundMatches[0].referee || '大會安排'}</strong></span>
+                </div><div class="grid grid-cols-1 md:grid-cols-3 gap-3">`;
+                
+                roundMatches.forEach(m => {
+                    const t1 = teams.find(t => t.id === m.t1) || { name: '未知', players: [] };
+                    const t2 = teams.find(t => t.id === m.t2) || { name: '未知', players: [] };
+                    html += `
+                        <div class="bg-slate-900/60 p-3 rounded-lg text-xs space-y-1 hover:border-slate-700 border border-transparent transition">
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">場地 ${m.court+1} (場次#${m.id})</span>
+                                ${m.played ? '<span class="text-emerald-400 font-bold">已結算</span>' : '<span class="text-amber-400">未賽</span>'}
+                            </div>
+                            <div class="flex justify-between font-bold">
+                                <span class="truncate pr-1">${t1.name}</span>
+                                <span class="text-rose-400 font-mono">${m.played ? m.score1 : '-'}</span>
+                            </div>
+                            <div class="flex justify-between font-bold">
+                                <span class="truncate pr-1">${t2.name}</span>
+                                <span class="text-slate-100 font-mono">${m.played ? m.score2 : '-'}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                rCard.innerHTML = html;
+                container.appendChild(rCard);
+            }
+        }
+
+        function updateScoresAndLeaderboard() {
+            let wA = 0, wB = 0, pA = 0, pB = 0;
+            matches.forEach(m => {
+                if(m.played) {
+                    pA += (m.score1 || 0); pB += (m.score2 || 0);
+                    if((m.score1 || 0) > (m.score2 || 0)) wA++; 
+                    else if((m.score2 || 0) > (m.score1 || 0)) wB++;
+                }
+            });
+            document.getElementById('total-wins-a').textContent = wA;
+            document.getElementById('total-wins-b').textContent = wB;
+            document.getElementById('total-points-a').textContent = pA;
+            document.getElementById('black-points-b').textContent = pB;
+            document.getElementById('header-team-a-status').textContent = `${wA}勝`;
+            document.getElementById('header-team-b-status').textContent = `${wB}勝`;
+        }
+
+        function populateCourtSelectors() {
+            for(let i=0; i<3; i++) {
+                const sel = document.getElementById(`court-selector-${i}`);
+                if(!sel) continue;
+                const curVal = sel.value;
+                sel.innerHTML = '<option value="">-- 點此選擇進行賽事 --</option>';
+                matches.forEach(m => {
+                    const t1 = teams.find(t => t.id === m.t1) || { name: '' };
+                    const t2 = teams.find(t => t.id === m.t2) || { name: '' };
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.textContent = `#${m.id} [輪${m.round}-場${m.court+1}] ${t1.name} vs ${t2.name} ${m.played?`(${m.score1}:${m.score2})`:''}`;
+                    sel.appendChild(opt);
+                });
+                if(curVal) sel.value = curVal;
+            }
+        }
+
+        function onCourtMatchSelect(courtIdx) {
+            const sel = document.getElementById(`court-selector-${courtIdx}`);
+            const mId = parseInt(sel.value);
+            if(isNaN(mId)) {
+                courtActiveMatch[courtIdx] = null;
+                document.getElementById(`court-body-${courtIdx}`).innerHTML = '請選擇賽事';
+                return;
+            }
+            courtActiveMatch[courtIdx] = mId;
+            courtTimers[courtIdx].seconds = 720; // 12分鐘
+            
+            const m = matches.find(x => x.id === mId);
+            renderCourtActiveBoard(courtIdx, m.score1 || 0, m.score2 || 0);
+        }
+
+        function renderCourtActiveBoard(courtIdx, currentS1, currentS2) {
+            const mId = courtActiveMatch[courtIdx];
+            const m = matches.find(x => x.id === mId);
+            const t1 = teams.find(t => t.id === m.t1) || { name: 'A' };
+            const t2 = teams.find(t => t.id === m.t2) || { name: 'B' };
+
+            const body = document.getElementById(`court-body-${courtIdx}`);
+            const existingS1 = document.getElementById(`score1-val-${courtIdx}`);
+            const existingS2 = document.getElementById(`score2-val-${courtIdx}`);
+            const s1 = existingS1 ? parseInt(existingS1.textContent) : currentS1;
+            const s2 = existingS2 ? parseInt(existingS2.textContent) : currentS2;
+
+            body.innerHTML = `
+                <div class="space-y-4 mt-2">
+                    <div class="text-xl font-mono tracking-widest bg-slate-950 py-1 rounded" id="timer-txt-${courtIdx}">12:00</div>
+                    <div class="flex gap-1 justify-center">
+                        <button onclick="startTimer(${courtIdx})" class="bg-emerald-700 px-2 py-0.5 rounded text-[10px]">開始</button>
+                        <button onclick="pauseTimer(${courtIdx})" class="bg-amber-700 px-2 py-0.5 rounded text-[10px]">暫停</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-center">
+                        <div class="bg-slate-950/60 p-2 rounded">
+                            <span class="text-[10px] text-rose-400 block truncate">${t1.name}</span>
+                            <span class="text-3xl font-black font-mono" id="score1-val-${courtIdx}">${s1}</span>
+                            <div class="flex justify-center gap-1 mt-1">
+                                <button onclick="clickLiveScore(${courtIdx},1,1)" class="bg-slate-800 px-2 py-1 rounded font-bold">+1</button>
+                                <button onclick="clickLiveScore(${courtIdx},1,-1)" class="bg-slate-800 px-2 py-1 rounded font-bold">-1</button>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950/60 p-2 rounded">
+                            <span class="text-[10px] text-slate-300 block truncate">${t2.name}</span>
+                            <span class="text-3xl font-black font-mono" id="score2-val-${courtIdx}">${s2}</span>
+                            <div class="flex justify-center gap-1 mt-1">
+                                <button onclick="clickLiveScore(${courtIdx},2,1)" class="bg-slate-800 px-2 py-1 rounded font-bold">+1</button>
+                                <button onclick="clickLiveScore(${courtIdx},2,-1)" class="bg-slate-800 px-2 py-1 rounded font-bold">-1</button>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="uploadResultToGoogle(${courtIdx})" class="w-full bg-pickleball-yellow text-slate-950 font-bold py-1.5 rounded text-xs">
+                        儲存並上傳至 Google 試算表
+                    </button>
+                </div>
+            `;
+            updateTimerUI(courtIdx);
+        }
+
+        function startTimer(idx) {
+            if(courtTimers[idx].running) return;
+            courtTimers[idx].running = true;
+            courtTimers[idx].intervalId = setInterval(() => {
+                courtTimers[idx].seconds--;
+                if(courtTimers[idx].seconds <= 0) {
+                    courtTimers[idx].seconds = 0;
+                    clearInterval(courtTimers[idx].intervalId);
+                    courtTimers[idx].running = false;
+                    alert(`場地 ${idx+1} 12分鐘時間到！`);
+                }
+                updateTimerUI(idx);
+            }, 1000);
+        }
+
+        function pauseTimer(idx) {
+            clearInterval(courtTimers[idx].intervalId);
+            courtTimers[idx].running = false;
+        }
+
+        function updateTimerUI(idx) {
+            const el = document.getElementById(`timer-txt-${idx}`);
+            if(!el) return;
+            const m = Math.floor(courtTimers[idx].seconds / 60);
+            const s = courtTimers[idx].seconds % 60;
+            el.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        }
+
+        function clickLiveScore(courtIdx, teamNum, diff) {
+            const el = document.getElementById(`score${teamNum}-val-${courtIdx}`);
+            if(!el) return;
+            let val = parseInt(el.textContent) + diff;
+            if(val < 0) val = 0;
+            el.textContent = val;
+        }
+
+        function uploadResultToGoogle(courtIdx) {
+            const mId = courtActiveMatch[courtIdx];
+            const s1 = parseInt(document.getElementById(`score1-val-${courtIdx}`).textContent);
+            const s2 = parseInt(document.getElementById(`score2-val-${courtIdx}`).textContent);
+            
+            if(s1 === s2) return alert("平手不能結算！請打出關鍵致勝分");
+            
+            pauseTimer(courtIdx);
+            showToast("正在上傳至雲端試算表...");
+
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: mId, score1: s1, score2: s2 })
+            })
+            .then(() => {
+                showToast(`場次 #${mId} 雲端同步儲存成功！`);
+                setTimeout(fetchFromGoogleSheets, 1500);
+            })
+            .catch(err => {
+                console.error(err);
+                alert("上傳失敗，請確認網路連線。");
+            });
+        }
+
+        // JSON 備份功能
+        function exportGroupsJSON() {
+            const payload = { teams: teams, matches: matches };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+            const dl = document.createElement('a');
+            dl.setAttribute("href", dataStr);
+            dl.setAttribute("download", `pickleball_config.json`);
+            dl.click();
+        }
+
+        function importGroupsJSON(event) {
+            const f = event.target.files[0];
+            if (!f) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if(parsed.teams && parsed.matches) {
+                        teams = parsed.teams;
+                        matches = parsed.matches;
+                        renderGroupCards();
+                        renderScheduleList();
+                        updateScoresAndLeaderboard();
+                        showToast("本地 JSON 還原成功！點選『同步到雲端』可推送覆蓋試算表。", "success");
+                    }
+                } catch(err) {
+                    alert("JSON 解析失敗！");
+                }
+            };
+            reader.readAsText(f);
+        }
+
+        function showToast(msg, type = "success") {
+            const container = document.getElementById('toast-container');
+            const t = document.createElement('div');
+            t.className = "bg-slate-900 border border-emerald-500/40 text-white px-4 py-2 rounded-xl text-xs shadow-xl";
+            t.innerHTML = `<i class="fa-solid fa-cloud-arrow-up text-lime-400 mr-2"></i>${msg}`;
+            container.appendChild(t);
+            setTimeout(() => t.remove(), 3500);
+        }
+    </script>
+</body>
+</html>
