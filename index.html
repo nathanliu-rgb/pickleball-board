@@ -9,12 +9,20 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@700;900&family=Inter:wght@400;700;900&family=Noto+Sans+TC:wght@400;700;900&display=swap');
         body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background-color: #0A0F1D; }
         .pickleball-yellow { color: #CCFF00; }
         .bg-pickleball-yellow { background-color: #CCFF00; }
         .glass-card { background: rgba(19, 26, 48, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.06); }
         .active-tab { border-bottom: 4px solid #CCFF00; color: #CCFF00; }
+        .led-font { font-family: 'Chivo Mono', monospace; }
+        .led-glow-red { text-shadow: 0 0 15px rgba(239, 68, 68, 0.6); }
+        .led-glow-white { text-shadow: 0 0 15px rgba(255, 255, 255, 0.5); }
+        .gold-pulse { animation: goldGlow 2s infinite alternate; }
+        @keyframes goldGlow {
+            0% { box-shadow: 0 0 5px rgba(234, 179, 8, 0.3), inset 0 0 5px rgba(234, 179, 8, 0.1); border-color: rgba(234, 179, 8, 0.4); }
+            100% { box-shadow: 0 0 25px rgba(234, 179, 8, 0.6), inset 0 0 15px rgba(234, 179, 8, 0.2); border-color: rgba(234, 179, 8, 0.9); }
+        }
     </style>
 </head>
 <body class="text-slate-100 min-h-screen pb-12">
@@ -284,7 +292,8 @@ Winni</textarea>
                 for(let i=0; i<3; i++) {
                     if (courtActiveMatch[i] !== null) {
                         const m = matches.find(x => x.id === courtActiveMatch[i]);
-                        renderCourtActiveBoard(i, m.score1, m.score2);
+                        // 在背景下載時，若沒開啟 timer，就主動刷新分數顯示
+                        if (m) renderCourtActiveBoard(i, m.score1, m.score2);
                     }
                 }
             })
@@ -536,77 +545,165 @@ Winni</textarea>
             document.getElementById('header-team-b-status').textContent = `${wB}勝`;
         }
 
+        // 優化：過濾下拉選單，使其僅包含當前場地的分配賽事 (m.court === i)
         function populateCourtSelectors() {
             for(let i=0; i<3; i++) {
                 const sel = document.getElementById(`court-selector-${i}`);
                 if(!sel) continue;
                 const curVal = sel.value;
-                sel.innerHTML = '<option value="">-- 點此選擇進行賽事 --</option>';
-                matches.forEach(m => {
+                sel.innerHTML = `<option value="">-- 點此選擇場地 ${i+1} 進行的賽事 --</option>`;
+                
+                // 僅獲取分配在此場地的比賽
+                const courtMatches = matches.filter(m => m.court === i);
+                
+                courtMatches.forEach(m => {
                     const t1 = teams.find(t => t.id === m.t1) || { name: '' };
                     const t2 = teams.find(t => t.id === m.t2) || { name: '' };
                     const opt = document.createElement('option');
                     opt.value = m.id;
-                    opt.textContent = `#${m.id} [輪${m.round}-場${m.court+1}] ${t1.name} vs ${t2.name} ${m.played?`(${m.score1}:${m.score2})`:''}`;
+                    opt.textContent = `#${m.id} [輪${m.round}] ${t1.name} vs ${t2.name} ${m.played?`(${m.score1}:${m.score2} 已完賽)`:'(未賽)'}`;
                     sel.appendChild(opt);
                 });
                 if(curVal) sel.value = curVal;
             }
         }
 
+        // 切換新賽事：自動重置分數、停止上一個計時器、重整 clock
         function onCourtMatchSelect(courtIdx) {
             const sel = document.getElementById(`court-selector-${courtIdx}`);
             const mId = parseInt(sel.value);
+            
+            // 每次重新選擇場次，立刻強制停止該場地的舊計時器
+            pauseTimer(courtIdx);
+
             if(isNaN(mId)) {
                 courtActiveMatch[courtIdx] = null;
                 document.getElementById(`court-body-${courtIdx}`).innerHTML = '請選擇賽事';
                 return;
             }
-            courtActiveMatch[courtIdx] = mId;
-            courtTimers[courtIdx].seconds = 720; // 12分鐘
             
+            courtActiveMatch[courtIdx] = mId;
+            courtTimers[courtIdx].seconds = 720; // 12分鐘重新計時
+
             const m = matches.find(x => x.id === mId);
-            renderCourtActiveBoard(courtIdx, m.score1 || 0, m.score2 || 0);
+            // 載入該場次的「當前雲端分數」（若是未賽局則自動帶入 0:0），排除舊賽事分數殘留
+            renderCourtActiveBoard(courtIdx, m.score1 !== null ? m.score1 : 0, m.score2 !== null ? m.score2 : 0);
         }
 
+        // 渲染高可讀性、加減按鈕位於分數下方，且加分按鈕用藍色凸顯的現場記分板
         function renderCourtActiveBoard(courtIdx, currentS1, currentS2) {
             const mId = courtActiveMatch[courtIdx];
             const m = matches.find(x => x.id === mId);
+            if (!m) return;
+
             const t1 = teams.find(t => t.id === m.t1) || { name: 'A' };
             const t2 = teams.find(t => t.id === m.t2) || { name: 'B' };
 
-            const body = document.getElementById(`court-body-${courtIdx}`);
-            const existingS1 = document.getElementById(`score1-val-${courtIdx}`);
-            const existingS2 = document.getElementById(`score2-val-${courtIdx}`);
-            const s1 = existingS1 ? parseInt(existingS1.textContent) : currentS1;
-            const s2 = existingS2 ? parseInt(existingS2.textContent) : currentS2;
+            const s1 = currentS1;
+            const s2 = currentS2;
 
+            const isFinished = m.played;
+
+            // 判讀是否滿足 11 分高亮獲勝
+            const isHighlight1 = s1 >= 11;
+            const isHighlight2 = s2 >= 11;
+
+            const body = document.getElementById(`court-body-${courtIdx}`);
+            
             body.innerHTML = `
-                <div class="space-y-4 mt-2">
-                    <div class="text-xl font-mono tracking-widest bg-slate-950 py-1 rounded" id="timer-txt-${courtIdx}">12:00</div>
-                    <div class="flex gap-1 justify-center">
-                        <button onclick="startTimer(${courtIdx})" class="bg-emerald-700 px-2 py-0.5 rounded text-[10px]">開始</button>
-                        <button onclick="pauseTimer(${courtIdx})" class="bg-amber-700 px-2 py-0.5 rounded text-[10px]">暫停</button>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 text-center">
-                        <div class="bg-slate-950/60 p-2 rounded">
-                            <span class="text-[10px] text-rose-400 block truncate">${t1.name}</span>
-                            <span class="text-3xl font-black font-mono" id="score1-val-${courtIdx}">${s1}</span>
-                            <div class="flex justify-center gap-1 mt-1">
-                                <button onclick="clickLiveScore(${courtIdx},1,1)" class="bg-slate-800 px-2 py-1 rounded font-bold">+1</button>
-                                <button onclick="clickLiveScore(${courtIdx},1,-1)" class="bg-slate-800 px-2 py-1 rounded font-bold">-1</button>
-                            </div>
+                <div class="space-y-5 mt-2">
+                    <!-- LED Retro High-Contrast Timer Box -->
+                    <div class="bg-slate-950 border-2 border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center shadow-inner relative overflow-hidden">
+                        <div class="absolute top-1 left-3 text-[9px] font-bold text-slate-500 uppercase tracking-widest">計時監控 (12分時限)</div>
+                        <div id="timer-txt-${courtIdx}" class="text-5xl font-black tracking-widest text-slate-100 led-font led-glow-white mt-2">
+                            12:00
                         </div>
-                        <div class="bg-slate-950/60 p-2 rounded">
-                            <span class="text-[10px] text-slate-300 block truncate">${t2.name}</span>
-                            <span class="text-3xl font-black font-mono" id="score2-val-${courtIdx}">${s2}</span>
-                            <div class="flex justify-center gap-1 mt-1">
-                                <button onclick="clickLiveScore(${courtIdx},2,1)" class="bg-slate-800 px-2 py-1 rounded font-bold">+1</button>
-                                <button onclick="clickLiveScore(${courtIdx},2,-1)" class="bg-slate-800 px-2 py-1 rounded font-bold">-1</button>
-                            </div>
+                        <div class="flex gap-2 justify-center mt-3 relative z-10">
+                            <button onclick="startTimer(${courtIdx})" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-xs transition flex items-center gap-1">
+                                <i class="fa-solid fa-play"></i> 開始
+                            </button>
+                            <button onclick="pauseTimer(${courtIdx})" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-3 py-1 rounded text-xs transition flex items-center gap-1">
+                                <i class="fa-solid fa-pause"></i> 暫停
+                            </button>
+                            <button onclick="resetTimer(${courtIdx})" class="bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold px-2 py-1 rounded text-xs transition" title="重設12分">
+                                <i class="fa-solid fa-rotate-right"></i>
+                            </button>
                         </div>
                     </div>
-                    <button onclick="uploadResultToGoogle(${courtIdx})" class="w-full bg-pickleball-yellow text-slate-950 font-bold py-1.5 rounded text-xs">
+
+                    <!-- Giant Scores Grid - Left-and-Right Design with Buttons Below Score -->
+                    <div class="grid grid-cols-2 gap-4 text-center">
+                        
+                        <!-- TEAM 1 (RED) SCOREBOARD -->
+                        <div class="relative rounded-2xl p-4 border transition duration-300 flex flex-col justify-between h-60 ${
+                            isHighlight1 
+                            ? 'bg-gradient-to-b from-yellow-950/40 to-rose-950/60 border-yellow-500 gold-pulse' 
+                            : 'bg-slate-950/75 border-slate-800'
+                        }">
+                            ${isHighlight1 ? `
+                                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-500 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow">
+                                    👑 11分致勝
+                                </div>` : ''
+                            }
+                            <span class="text-xs font-black text-rose-400 block truncate ${isHighlight1 ? 'animate-bounce' : ''}">${t1.name}</span>
+                            
+                            <!-- Score Digit (Center) -->
+                            <span class="text-6xl sm:text-7xl font-extrabold tracking-widest led-font my-1 ${isHighlight1 ? 'text-yellow-400' : 'text-white'}" id="score1-val-${courtIdx}">
+                                ${s1}
+                            </span>
+                            
+                            <!-- Buttons Row (Below Score) -->
+                            <div class="flex justify-center gap-2">
+                                <!-- Plus Button (Blue Highlight) -->
+                                <button onclick="clickLiveScore(${courtIdx},1,1)" ${isFinished ? 'disabled' : ''} 
+                                    class="bg-blue-600 hover:bg-blue-500 active:scale-90 text-white font-extrabold px-4 py-2 rounded-xl text-sm transition shadow-lg shadow-blue-950/30 disabled:opacity-20 flex-1 flex items-center justify-center gap-1 select-none">
+                                    <i class="fa-solid fa-plus text-xs"></i> +1
+                                </button>
+                                <!-- Minus Button (Dark Grey) -->
+                                <button onclick="clickLiveScore(${courtIdx},1,-1)" ${isFinished ? 'disabled' : ''} 
+                                    class="bg-slate-800 hover:bg-slate-755 active:scale-90 text-slate-400 font-bold px-3 py-2 rounded-xl text-sm transition border border-slate-700/50 disabled:opacity-20 flex items-center justify-center select-none">
+                                    <i class="fa-solid fa-minus text-xs"></i>
+                                </button>
+                            </div>
+                            <span class="text-[9px] text-slate-500">紅隊 (Team A)</span>
+                        </div>
+
+                        <!-- TEAM 2 (WHITE) SCOREBOARD -->
+                        <div class="relative rounded-2xl p-4 border transition duration-300 flex flex-col justify-between h-60 ${
+                            isHighlight2 
+                            ? 'bg-gradient-to-b from-yellow-950/40 to-slate-900/60 border-yellow-500 gold-pulse' 
+                            : 'bg-slate-950/75 border-slate-800'
+                        }">
+                            ${isHighlight2 ? `
+                                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-500 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow">
+                                    👑 11分致勝
+                                </div>` : ''
+                            }
+                            <span class="text-xs font-black text-slate-300 block truncate ${isHighlight2 ? 'animate-bounce' : ''}">${t2.name}</span>
+                            
+                            <!-- Score Digit (Center) -->
+                            <span class="text-6xl sm:text-7xl font-extrabold tracking-widest led-font my-1 ${isHighlight2 ? 'text-yellow-400' : 'text-white'}" id="score2-val-${courtIdx}">
+                                ${s2}
+                            </span>
+                            
+                            <!-- Buttons Row (Below Score) -->
+                            <div class="flex justify-center gap-2">
+                                <!-- Plus Button (Blue Highlight) -->
+                                <button onclick="clickLiveScore(${courtIdx},2,1)" ${isFinished ? 'disabled' : ''} 
+                                    class="bg-blue-600 hover:bg-blue-500 active:scale-90 text-white font-extrabold px-4 py-2 rounded-xl text-sm transition shadow-lg shadow-blue-950/30 disabled:opacity-20 flex-1 flex items-center justify-center gap-1 select-none">
+                                    <i class="fa-solid fa-plus text-xs"></i> +1
+                                </button>
+                                <!-- Minus Button (Dark Grey) -->
+                                <button onclick="clickLiveScore(${courtIdx},2,-1)" ${isFinished ? 'disabled' : ''} 
+                                    class="bg-slate-800 hover:bg-slate-755 active:scale-90 text-slate-400 font-bold px-3 py-2 rounded-xl text-sm transition border border-slate-700/50 disabled:opacity-20 flex items-center justify-center select-none">
+                                    <i class="fa-solid fa-minus text-xs"></i>
+                                </button>
+                            </div>
+                            <span class="text-[9px] text-slate-500">白隊 (Team B)</span>
+                        </div>
+                    </div>
+                    
+                    <button onclick="uploadResultToGoogle(${courtIdx})" class="w-full bg-pickleball-yellow hover:bg-lime-400 text-slate-950 font-extrabold py-3 rounded-xl text-xs shadow-lg transition active:scale-95">
                         儲存並上傳至 Google 試算表
                     </button>
                 </div>
@@ -630,8 +727,16 @@ Winni</textarea>
         }
 
         function pauseTimer(idx) {
-            clearInterval(courtTimers[idx].intervalId);
+            if (courtTimers[idx].intervalId) {
+                clearInterval(courtTimers[idx].intervalId);
+            }
             courtTimers[idx].running = false;
+        }
+
+        function resetTimer(idx) {
+            pauseTimer(idx);
+            courtTimers[idx].seconds = 720;
+            updateTimerUI(idx);
         }
 
         function updateTimerUI(idx) {
@@ -640,20 +745,40 @@ Winni</textarea>
             const m = Math.floor(courtTimers[idx].seconds / 60);
             const s = courtTimers[idx].seconds % 60;
             el.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            
+            // 當倒數少於 1 分鐘時自動觸發 LED 紅色霓虹警告
+            if (courtTimers[idx].seconds <= 60) {
+                el.className = "text-5xl font-black font-mono tracking-widest text-red-500 animate-pulse led-glow-red mt-2";
+            } else {
+                el.className = "text-5xl font-black font-mono tracking-widest text-slate-100 led-glow-white mt-2";
+            }
         }
 
+        // 修改點擊比分邏輯：直接同步修改 matches array 並呼叫 render 重繪（支援 11分動態 Highlight）
         function clickLiveScore(courtIdx, teamNum, diff) {
-            const el = document.getElementById(`score${teamNum}-val-${courtIdx}`);
-            if(!el) return;
-            let val = parseInt(el.textContent) + diff;
-            if(val < 0) val = 0;
-            el.textContent = val;
+            const mId = courtActiveMatch[courtIdx];
+            const m = matches.find(x => x.id === mId);
+            if (!m) return;
+
+            if (m.score1 === null) m.score1 = 0;
+            if (m.score2 === null) m.score2 = 0;
+
+            if (teamNum === 1) {
+                m.score1 = Math.max(0, m.score1 + diff);
+            } else {
+                m.score2 = Math.max(0, m.score2 + diff);
+            }
+
+            renderCourtActiveBoard(courtIdx, m.score1, m.score2);
         }
 
         function uploadResultToGoogle(courtIdx) {
             const mId = courtActiveMatch[courtIdx];
-            const s1 = parseInt(document.getElementById(`score1-val-${courtIdx}`).textContent);
-            const s2 = parseInt(document.getElementById(`score2-val-${courtIdx}`).textContent);
+            const m = matches.find(x => x.id === mId);
+            if (!m) return;
+
+            const s1 = m.score1 !== null ? m.score1 : 0;
+            const s2 = m.score2 !== null ? m.score2 : 0;
             
             if(s1 === s2) return alert("平手不能結算！請打出關鍵致勝分");
             
@@ -668,6 +793,10 @@ Winni</textarea>
             })
             .then(() => {
                 showToast(`場次 #${mId} 雲端同步儲存成功！`);
+                // 模擬彩花慶祝
+                if (s1 >= 11 || s2 >= 11) {
+                    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+                }
                 setTimeout(fetchFromGoogleSheets, 1500);
             })
             .catch(err => {
