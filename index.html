@@ -641,9 +641,11 @@ Winni</textarea>
 
             const isFinished = m.played;
 
-            // 判讀是否滿足 11 分高亮獲勝
-            const isHighlight1 = s1 >= 11;
-            const isHighlight2 = s2 >= 11;
+            // 判讀高亮規則：
+            // 1. 如果比賽「已上傳完成/已結算」(isFinished === true)：只高亮分數高（獲勝）的那一方。
+            // 2. 如果比賽「尚未結算」(isFinished === false)：若分數達到 11 分（或以上）觸發 Match Point 高亮。
+            const isHighlight1 = isFinished ? (s1 > s2) : (s1 >= 11);
+            const isHighlight2 = isFinished ? (s2 > s1) : (s2 >= 11);
 
             const body = document.getElementById(`court-body-${courtIdx}`);
             
@@ -679,7 +681,7 @@ Winni</textarea>
                         }">
                             ${isHighlight1 ? `
                                 <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-500 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow">
-                                    👑 11分致勝
+                                    ${isFinished ? '👑 最終獲勝' : '👑 11分致勝'}
                                 </div>` : ''
                             }
                             <span class="text-xs font-black text-rose-400 block truncate ${isHighlight1 ? 'animate-bounce' : ''}">${t1.name}</span>
@@ -713,7 +715,7 @@ Winni</textarea>
                         }">
                             ${isHighlight2 ? `
                                 <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-500 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow">
-                                    👑 11分致勝
+                                    ${isFinished ? '👑 最終獲勝' : '👑 11分致勝'}
                                 </div>` : ''
                             }
                             <span class="text-xs font-black text-slate-300 block truncate ${isHighlight2 ? 'animate-bounce' : ''}">${t2.name}</span>
@@ -740,9 +742,17 @@ Winni</textarea>
                         </div>
                     </div>
                     
-                    <button onclick="uploadResultToGoogle(${courtIdx})" class="w-full bg-pickleball-yellow hover:bg-lime-400 text-slate-950 font-extrabold py-3 rounded-xl text-xs shadow-lg transition active:scale-95">
-                        儲存並上傳至 Google 試算表
-                    </button>
+                    <!-- Action Button -->
+                    <div id="finish-panel-${courtIdx}">
+                        ${isFinished ? 
+                            `<div class="bg-emerald-950/40 text-emerald-400 text-xs py-3 px-3 rounded-xl border border-emerald-500/20 font-bold text-center">
+                                🏆 對抗已順利結算並儲存至試算表！
+                             </div>` :
+                            `<button onclick="uploadResultToGoogle(${courtIdx})" class="w-full bg-pickleball-yellow hover:bg-lime-400 text-slate-950 font-extrabold py-3 rounded-xl text-xs shadow-lg transition active:scale-95">
+                                儲存並上傳至 Google 試算表
+                            </button>`
+                        }
+                    </div>
                 </div>
             `;
             updateTimerUI(courtIdx);
@@ -821,6 +831,11 @@ Winni</textarea>
             if(s1 === s2) return alert("平手不能結算！請打出關鍵致勝分");
             
             pauseTimer(courtIdx);
+            
+            // 極速本地狀態鎖定（立刻呈現高亮最終優勝，免去雲端同步的時間差延遲）
+            m.played = true;
+            renderCourtActiveBoard(courtIdx, s1, s2);
+            
             showToast("正在上傳至雲端試算表...");
 
             fetch(GOOGLE_SCRIPT_URL, {
@@ -831,14 +846,15 @@ Winni</textarea>
             })
             .then(() => {
                 showToast(`場次 #${mId} 雲端同步儲存成功！`);
-                // 模擬彩花慶祝
-                if (s1 >= 11 || s2 >= 11) {
-                    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-                }
+                // 優化：無論最後比分幾比幾，只要點選上傳成功，一律觸發全彩彩花慶祝特效！
+                confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
                 setTimeout(fetchFromGoogleSheets, 1500);
             })
             .catch(err => {
                 console.error(err);
+                // 上傳失敗則本地回滾
+                m.played = false;
+                renderCourtActiveBoard(courtIdx, s1, s2);
                 alert("上傳失敗，請確認網路連線。");
             });
         }
