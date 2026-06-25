@@ -270,18 +270,32 @@ Winni</textarea>
                 }
 
                 if (data.matches && data.matches.length > 1) {
-                    matches = data.matches.slice(1).map(row => ({
-                        id: parseInt(row[0]),
-                        round: parseInt(row[1]),
-                        court: parseInt(row[2]),
-                        t1: parseInt(row[3]),
-                        t2: parseInt(row[4]),
-                        score1: row[5] === "" || row[5] === null ? null : parseInt(row[5]),
-                        score2: row[6] === "" || row[6] === null ? null : parseInt(row[6]),
-                        played: row[7] === "true" || row[7] === true,
-                        label: row[8],
-                        referee: row[9]
-                    }));
+                    matches = data.matches.slice(1).map(row => {
+                        const id = parseInt(row[0]);
+                        // 檢查此場次是否正在任何一個場地（記分板）中被選取操作
+                        const isActive = courtActiveMatch.includes(id);
+                        
+                        if (isActive) {
+                            // Bug 修正核心：如果此場次目前正在記分板上進行中，保留本地暫存分數，不被試算表資料覆蓋
+                            const localMatch = matches.find(m => m.id === id);
+                            if (localMatch) {
+                                return localMatch;
+                            }
+                        }
+
+                        return {
+                            id: id,
+                            round: parseInt(row[1]),
+                            court: parseInt(row[2]),
+                            t1: parseInt(row[3]),
+                            t2: parseInt(row[4]),
+                            score1: row[5] === "" || row[5] === null ? null : parseInt(row[5]),
+                            score2: row[6] === "" || row[6] === null ? null : parseInt(row[6]),
+                            played: row[7] === "true" || row[7] === true,
+                            label: row[8],
+                            referee: row[9]
+                        };
+                    });
                 }
 
                 renderScheduleList();
@@ -292,7 +306,7 @@ Winni</textarea>
                 for(let i=0; i<3; i++) {
                     if (courtActiveMatch[i] !== null) {
                         const m = matches.find(x => x.id === courtActiveMatch[i]);
-                        // 在背景下載時，若沒開啟 timer，就主動刷新分數顯示
+                        // 在背景下載時，使用本地已保留變更的 matches 結構更新渲染，杜絕被雲端舊數據重設
                         if (m) renderCourtActiveBoard(i, m.score1, m.score2);
                     }
                 }
@@ -545,7 +559,7 @@ Winni</textarea>
             document.getElementById('header-team-b-status').textContent = `${wB}勝`;
         }
 
-        // 優化：過濾下拉選單，使其僅包含當前場地的分配賽事 (m.court === i)
+        // 過濾下拉選單，使其僅包含當前場地的分配賽事 (m.court === i)
         function populateCourtSelectors() {
             for(let i=0; i<3; i++) {
                 const sel = document.getElementById(`court-selector-${i}`);
@@ -568,7 +582,7 @@ Winni</textarea>
             }
         }
 
-        // 切換新賽事：自動重置分數、停止上一個計時器、重整 clock
+        // 切換新賽事：自動重置分數、停止上一個計時器、並精準對齊載入試算表當前的分數
         function onCourtMatchSelect(courtIdx) {
             const sel = document.getElementById(`court-selector-${courtIdx}`);
             const mId = parseInt(sel.value);
@@ -585,9 +599,32 @@ Winni</textarea>
             courtActiveMatch[courtIdx] = mId;
             courtTimers[courtIdx].seconds = 720; // 12分鐘重新計時
 
-            const m = matches.find(x => x.id === mId);
-            // 載入該場次的「當前雲端分數」（若是未賽局則自動帶入 0:0），排除舊賽事分數殘留
-            renderCourtActiveBoard(courtIdx, m.score1 !== null ? m.score1 : 0, m.score2 !== null ? m.score2 : 0);
+            // 設定為選中狀態後，先強制發起一次 Google 試算表同步來載入此比賽的分數
+            fetch(GOOGLE_SCRIPT_URL)
+            .then(response => response.json())
+            .then(data => {
+                if (data.matches && data.matches.length > 1) {
+                    const targetRow = data.matches.slice(1).find(row => parseInt(row[0]) === mId);
+                    if (targetRow) {
+                        const m = matches.find(x => x.id === mId);
+                        if (m) {
+                            m.score1 = targetRow[5] === "" || targetRow[5] === null ? 0 : parseInt(targetRow[5]);
+                            m.score2 = targetRow[6] === "" || targetRow[6] === null ? 0 : parseInt(targetRow[6]);
+                            m.played = targetRow[7] === "true" || targetRow[7] === true;
+                            
+                            // 僅在此載入時機點進行初始化分數的渲染
+                            renderCourtActiveBoard(courtIdx, m.score1, m.score2);
+                            return;
+                        }
+                    }
+                }
+                // 若無雲端資料，預設為 0:0
+                renderCourtActiveBoard(courtIdx, 0, 0);
+            })
+            .catch(err => {
+                console.error("載入賽事分數失敗: ", err);
+                renderCourtActiveBoard(courtIdx, 0, 0);
+            });
         }
 
         // 渲染高可讀性、加減按鈕位於分數下方，且加分按鈕用藍色凸顯的現場記分板
@@ -733,6 +770,7 @@ Winni</textarea>
             courtTimers[idx].running = false;
         }
 
+        // 當點擊重設時，重設本地時間為 12 分鐘，不更動比分
         function resetTimer(idx) {
             pauseTimer(idx);
             courtTimers[idx].seconds = 720;
