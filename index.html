@@ -161,6 +161,16 @@
                     <h3 class="text-lg font-bold flex items-center gap-2 text-yellow-400">
                         <i class="fa-solid fa-lock"></i> 賽前名單與初始化
                     </h3>
+
+                    <!-- 本地名單未同步警告區塊 -->
+                    <div id="unsaved-warning" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-400 space-y-1">
+                        <div class="font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-triangle-exclamation animate-pulse"></i>
+                            本地名單修改未同步！
+                        </div>
+                        <p class="text-slate-400 leading-relaxed">背景同步已暫停，避免覆蓋您的調整。請完成調整後點擊下方<strong>「同步到雲端試算表」</strong>保存，或點此 <button onclick="discardLocalChanges()" class="text-amber-400 underline hover:text-amber-300 font-bold">放棄修改</button>。</p>
+                    </div>
+
                     <p class="text-xs text-slate-400">請在下方登錄 24 位好手（每行一人），隨後進行隨機分牌。完成分組後，點擊「同步到雲端試算表」即可重設雲端所有名單與賽程！</p>
                     <textarea id="player-input" rows="8" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 font-mono focus:outline-none focus:border-pickleball-yellow">Yili
 Argon
@@ -247,6 +257,9 @@ Winni</textarea>
             { seconds: 720, running: false, intervalId: null },
             { seconds: 720, running: false, intervalId: null }
         ];
+        
+        // 本地變更狀態鎖
+        let hasUnsavedGroupChanges = false;
 
         window.onload = function() {
             fetchFromGoogleSheets();
@@ -255,10 +268,19 @@ Winni</textarea>
         };
 
         // 從 Google Sheets 獲取數據
-        function fetchFromGoogleSheets() {
+        function fetchFromGoogleSheets(isManual = false) {
+            // 本地有名單未存檔變更時，自動跳過背景同步以防止資料被覆蓋
+            if (hasUnsavedGroupChanges && !isManual) {
+                console.log("偵測到本地有未存檔的名單修改，已自動跳過背景雲端同步。");
+                return;
+            }
+
             fetch(GOOGLE_SCRIPT_URL)
             .then(response => response.json())
             .then(data => {
+                // 安全守衛：防止非預期的在傳輸時間差內的使用者新編輯被覆蓋
+                if (hasUnsavedGroupChanges && !isManual) return;
+
                 if (data.teams && data.teams.length > 1) {
                     teams = data.teams.slice(1).map(row => ({
                         id: parseInt(row[0]),
@@ -310,8 +332,34 @@ Winni</textarea>
                         if (m) renderCourtActiveBoard(i, m.score1, m.score2);
                     }
                 }
+
+                // 若是使用者手動點擊更新，則同時重設編輯鎖狀態
+                if (isManual) {
+                    hasUnsavedGroupChanges = false;
+                    updateUnsavedWarning();
+                }
             })
             .catch(err => console.error("讀取 Google 試算表失敗: ", err));
+        }
+
+        // 放棄本地修改，重新從雲端載入
+        function discardLocalChanges() {
+            hasUnsavedGroupChanges = false;
+            updateUnsavedWarning();
+            fetchFromGoogleSheets(true);
+            showToast("已放棄本地修改，重新自雲端載入名單！", "info");
+        }
+
+        // 警告橫幅顯示與隱藏
+        function updateUnsavedWarning() {
+            const warningEl = document.getElementById('unsaved-warning');
+            if (warningEl) {
+                if (hasUnsavedGroupChanges) {
+                    warningEl.classList.remove('hidden');
+                } else {
+                    warningEl.classList.add('hidden');
+                }
+            }
         }
 
         function switchTab(tabId) {
@@ -329,7 +377,7 @@ Winni</textarea>
             const text = document.getElementById('player-input').value.trim();
             const names = text.split('\n').map(n => n.trim()).filter(n => n.length > 0);
             if (names.length !== 24) {
-                alert("人數必須剛好為 24 人！");
+                showToast("人數必須剛好為 24 人！", "error");
                 return;
             }
 
@@ -362,6 +410,9 @@ Winni</textarea>
                 { id: 12, round: 4, court: 2, t1: 5, t2: 8, score1: null, score2: null, played: false, label: "A6 vs B3", referee: "A1, A2, A3" }
             ];
 
+            // 開啟本地鎖並重繪名單
+            hasUnsavedGroupChanges = true;
+            updateUnsavedWarning();
             renderGroupCards();
             showToast("本地隨機分組完成！點擊下方「同步到雲端」將其生效。", "info");
         }
@@ -369,7 +420,7 @@ Winni</textarea>
         // 推送完整分組與賽程初始化到 Google Sheet
         function uploadTeamsAndScheduleToCloud() {
             if(teams.length === 0 || matches.length === 0) {
-                alert("目前無可供同步的資料，請先點選洗牌組隊！");
+                showToast("目前無可供同步的資料，請先點選洗牌組隊！", "error");
                 return;
             }
 
@@ -396,12 +447,15 @@ Winni</textarea>
                 })
             })
             .then(() => {
+                // 雲端儲存成功，解鎖並恢復背景自動同步
+                hasUnsavedGroupChanges = false;
+                updateUnsavedWarning();
                 showToast("雲端初始化與覆蓋儲存成功！", "success");
                 setTimeout(fetchFromGoogleSheets, 1500);
             })
             .catch(err => {
                 console.error(err);
-                alert("同步失敗，請檢查網路連線。");
+                showToast("同步失敗，請檢查網路連線。", "error");
             });
         }
 
@@ -448,6 +502,10 @@ Winni</textarea>
                 sourceTeam.name = `${sourceTeam.group}${sourceTeam.num} 組合 (${sourceTeam.players[0]}/${sourceTeam.players[1]})`;
                 targetTeam.name = `${targetTeam.group}${targetTeam.num} 組合 (${targetTeam.players[0]}/${targetTeam.players[1]})`;
 
+                // 觸發本地鎖定
+                hasUnsavedGroupChanges = true;
+                updateUnsavedWarning();
+                
                 renderGroupCards();
                 showToast("調整成功！請記得點選『同步到雲端試算表』予以保存更新！", "info");
             } catch (e) {
@@ -767,7 +825,7 @@ Winni</textarea>
                     courtTimers[idx].seconds = 0;
                     clearInterval(courtTimers[idx].intervalId);
                     courtTimers[idx].running = false;
-                    alert(`場地 ${idx+1} 12分鐘時間到！`);
+                    showToast("🚨 場地 " + (idx+1) + " 12分鐘時間到！", "error");
                 }
                 updateTimerUI(idx);
             }, 1000);
@@ -828,7 +886,10 @@ Winni</textarea>
             const s1 = m.score1 !== null ? m.score1 : 0;
             const s2 = m.score2 !== null ? m.score2 : 0;
             
-            if(s1 === s2) return alert("平手不能結算！請打出關鍵致勝分");
+            if(s1 === s2) {
+                showToast("平手不能結算！請打出關鍵致勝分", "error");
+                return;
+            }
             
             pauseTimer(courtIdx);
             
@@ -846,8 +907,10 @@ Winni</textarea>
             })
             .then(() => {
                 showToast(`場次 #${mId} 雲端同步儲存成功！`);
-                // 優化：無論最後比分幾比幾，只要點選上傳成功，一律觸發全彩彩花慶祝特效！
-                confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+                // 優化：無論最後比分幾比幾，只要點選上傳成功，一律觸發全彩彩花慶幸
+                if (s1 >= 11 || s2 >= 11) {
+                    confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+                }
                 setTimeout(fetchFromGoogleSheets, 1500);
             })
             .catch(err => {
@@ -855,7 +918,7 @@ Winni</textarea>
                 // 上傳失敗則本地回滾
                 m.played = false;
                 renderCourtActiveBoard(courtIdx, s1, s2);
-                alert("上傳失敗，請確認網路連線。");
+                showToast("上傳失敗，請確認網路連線。", "error");
             });
         }
 
@@ -879,13 +942,18 @@ Winni</textarea>
                     if(parsed.teams && parsed.matches) {
                         teams = parsed.teams;
                         matches = parsed.matches;
+                        
+                        // 觸發本地變更鎖，暫停背景覆寫
+                        hasUnsavedGroupChanges = true;
+                        updateUnsavedWarning();
+                        
                         renderGroupCards();
                         renderScheduleList();
                         updateScoresAndLeaderboard();
                         showToast("本地 JSON 還原成功！點選『同步到雲端』可推送覆蓋試算表。", "success");
                     }
                 } catch(err) {
-                    alert("JSON 解析失敗！");
+                    showToast("JSON 解析失敗！", "error");
                 }
             };
             reader.readAsText(f);
